@@ -30,4 +30,4 @@ def str_timestamp():
 
 
 def str_datetimestamp():
-    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

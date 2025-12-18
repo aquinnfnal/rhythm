@@ -17,10 +17,10 @@ from rhythm_logger import RhythmLogger
 from rhythm_utils import *
 
 # Define hooks
-RHYTHM_VARIABLES_HOOK = "$RHYTHM_VARIABLES"
-RHYTHM_SAVE_HOOK = "$RHYTHM_SAVE"
-RHYTHM_POST_HOOK = "$RHYTHM_POST"
-RHYTHM_STIMULUS_HOOK = "$RHYTHM_STIMULUS"
+#RHYTHM_VARIABLES_HOOK = "$RHYTHM_VARIABLES"
+#RHYTHM_SAVE_HOOK = "$RHYTHM_SAVE"
+#RHYTHM_POST_HOOK = "$RHYTHM_POST"
+#RHYTHM_STIMULUS_HOOK = "$RHYTHM_STIMULUS"
 
 
 class Recipe():
@@ -33,17 +33,17 @@ class Recipe():
         self.ocn_script = ""
         self.cdslib = None         #cds.lib file
         self.setup_scripts = []    #Scripts that should be sourced before running simulations (i.e. setup.csh)
-        self.analysis_tasks = []
+        self.post_run_tasks = []
 
         #Portions of the OCEAN script that rhythm can generate.
-        self.rhythm_variables_script = ""
-        self.rhythm_stimulus_script = ""
-        self.rhythm_save_script = ""
-        self.rhythm_post_script = ""
+        #self.rhythm_variables_script = ""
+        #self.rhythm_stimulus_script = ""
+        #self.rhythm_save_script = ""
+        #self.rhythm_post_script = ""
 
-    #################
-    # Setup Methods #
-    #################
+    ###################################
+    # Rhythm Simulation Setup Methods #
+    ###################################
 
     def set_rundir(self,rundir, local_results=True):
         """Sets the directory in which the Recipe will run.
@@ -64,22 +64,119 @@ class Recipe():
         self.setup_scripts.append(new_script)
 
     
-    #################################
-    # Simulation & Analysis Methods #
-    #################################
+    ##########################
+    # Stage Loading Methods  #
+    ##########################
 
-    def load_ocn(self, ocn_file):
+    def load_stage(self, stage_tuple):
+        if stage_tuple[0] == "ocnScript":
+            self.load_stage_ocnScript(stage_tuple[1])
+        elif stage_tuple[0] == "ocnSnip":
+            self.load_stage_ocnSnip(stage_tuple[1])
+        elif stage_tuple[0] == "variables":
+            self.load_stage_variables(stage_tuple[1])
+        elif stage_tuple[0] == "stimulus":
+            self.load_stage_stimulus(stage_tuple[1])
+        elif stage_tuple[0] == "saveResults":
+            self.load_stage_saveResults(stage_tuple[1])
+        elif stage_tuple[0] == "printScalars":
+            self.load_stage_printScalars(stage_tuple[1])
+        elif stage_tuple[0] == "printCSV":
+            self.load_stage_printCSV(stage_tuple[1])
+        else:
+            self.log.error(f"Unable to load stage. Don't recognize stage type {stage_tuple[0]}")
+            
+
+    def load_stage_ocnScript(self, ocn_file):
         with open(ocn_file, 'r') as read_file:
             ocn_file_text = read_file.read()
-        self.ocn_script += ocn_file_text
+        self.ocn_script += "\n"+ocn_file_text+"\n"
+
+    def load_stage_ocnSnip(self, ocn_snip):
+        self.ocn_script += "\n"+ocn_snip+"\n"
+
+
+    def load_stage_variables(self, variable_dict):
+        """Given a dictionary which maps variable names (str) to values (num), 
+           this function will load them into your OCEAN script, replacing the
+           $RHYTHM_VARIABLES hook."""
+
+        self.log.info(f"Loading variables...")
+            
+        variables_txt = "\n; ---------- Design Variables ---------\n"
+
+        for var_name in variable_dict.keys():
+            var_val = variable_dict[var_name]
+            variables_txt += f"desVar(  \"{var_name}\" {var_val}  )\n"
+            
+            
+        self.ocn_script += variables_txt
+
+
+    def load_stage_stimulus(self, stimulus_file):
+        """Given a stimulus file **in the same dir as the testbench** 
+           copies it into the results folder and sets up the script to use it.
+        """
+        stimulus_file_name = os.path.basename(stimulus_file)
+
+        #Set up the command to include the stimulus file.
+        rhythm_stimulus_script = f"\nstimulusFile( \"{stimulus_file_name}\" )\n"
+
+        #Copy stimulus file into the results directory. 
+        shutil.copy(stimulus_file, os.path.join(self.full_rundir,stimulus_file_name))
+
+        self.ocn_script += rhythm_stimulus_script
+
+
+    def load_stage_saveResults(self, results_list):
+        """results_list should have the form of tuples, where the entries are:
+           1. Name
+           2. type (IDC, IT, etc) and
+           3. hierarchical path of the node under test.
+           second entry is the hierarchical path of that result."""
+        
+        #Create save statements and variable grabbing statements.
+        save_script = ""
+        for r in results_list:
+            name = r[0]
+            var_type = r[1]
+            path = r[2]
+            if var_type.startswith("I"):
+                save_type = "'i"
+            else:
+                save_type = "'v"
+            
+            
+            save_script += f"save( {save_type} \"{path}\" )\n"
+
+        self.ocn_script += "\n"+save_script
+
+    def load_stage_printScalars(self, results_list):
+        """Prints scalar results to a txt file. Syntax is the same as load_saveResults()"""
+                
+        #Create statements to write to file.
+        self.ocn_script += "\nwrite_file = outfile( \"scalar_results.txt\" \"w\" )\n"
+
+        for r in results_list:
+            name = r[0]
+            var_type = r[1]
+            path = r[2]
+            self.ocn_script += f"{name} = {var_type}(\"{path}\")\n"
+            self.ocn_script += f"errset( fprintf( write_file \"{name} = %g\\n\" {name} ) t )\n"
+            
+        self.ocn_script += "close( write_file )\n"
 
     
-    def save_output(self,output_name,save_method):
+    def load_stage_printCSV(self,output_name):
         """Instruct rhythm to save a particular output with a particular method."""
-        if save_method == "CSV":
-            self.ocn_script += f"\nocnPrint( ?output \"{output_name}.txt\" "
-            self.ocn_script += f"?numberNotation `engineering {output_name} )"
-            self.analysis_tasks.append(output_name)
+        self.ocn_script += f"\nocnPrint( ?output \"{output_name}.txt\" "
+        self.ocn_script += f"?numberNotation `engineering {output_name} )"
+        self.post_run_tasks.append(("txt_to_csv",output_name))
+
+
+    ###########################
+    # Compile and Run Methods #
+    ###########################
 
     def compile_recipe(self, interactive=False):
         """Compile the Recipe into an OCEAN script and write it to the 
@@ -91,114 +188,21 @@ class Recipe():
         time_string = str_datetimestamp()
         # Replace hooks in OCEAN script
         # It doesn't matter if not all of these hooks / scripts that have been defined.
-        self.ocn_script = self.ocn_script.replace(RHYTHM_VARIABLES_HOOK, self.rhythm_variables_script)
-        self.ocn_script = self.ocn_script.replace(RHYTHM_SAVE_HOOK, self.rhythm_save_script)
-        self.ocn_script = self.ocn_script.replace(RHYTHM_POST_HOOK, self.rhythm_post_script)
-        self.ocn_script = self.ocn_script.replace(RHYTHM_STIMULUS_HOOK, self.rhythm_stimulus_script)
+        #self.ocn_script = self.ocn_script.replace(RHYTHM_VARIABLES_HOOK, self.rhythm_variables_script)
+        #self.ocn_script = self.ocn_script.replace(RHYTHM_SAVE_HOOK, self.rhythm_save_script)
+        #self.ocn_script = self.ocn_script.replace(RHYTHM_POST_HOOK, self.rhythm_post_script)
+        #self.ocn_script = self.ocn_script.replace(RHYTHM_STIMULUS_HOOK, self.rhythm_stimulus_script)
 
 
         with open(os.path.join(self.full_rundir, "compiled_recipe.ocn"),'w') as write_file:
             
-            write_file.write(f"; OCEAN Script generated by RHYTHM at {time_string}")
+            write_file.write(f"; OCEAN Script generated by RHYTHM at {time_string}\n")
 
             write_file.write(self.ocn_script)
             #Append an exit statement to the output of OCEAN scripts to avoid going into 
             #interactive mode.
             if not interactive:
                 write_file.write("\nexit()")
-     
-
-    def load_variables(self, variable_dict):
-        """Given a dictionary which maps variable names (str) to values (num), 
-           this function will load them into your OCEAN script, replacing the
-           $RHYTHM_VARIABLES hook."""
-        
-        if RHYTHM_VARIABLES_HOOK not in self.ocn_script:
-            self.log.error(f"Cannot load variables, missing {RHYTHM_VARIABLES_HOOK} hook!")
-            return
-
-        self.log.info(f"Loading variables...")
-            
-        variables_txt = ""
-
-        for var_name in variable_dict.keys():
-            var_val = variable_dict[var_name]
-            variables_txt += f"desVar(  \"{var_name}\" {var_val}  )\n"
-            
-            
-        self.rhythm_variables_script += variables_txt
-        
-
-    def use_stimulus(self, stimulus_file):
-        """Given a stimulus file **in the same dir as the testbench** 
-           copies it into the results folder and sets up the script to use it.
-        """
-
-        #Check there is a hook for this. 
-        if RHYTHM_STIMULUS_HOOK not in self.ocn_script:
-            self.log.error(f"Cannot add stimulus file, missing {RHYTHM_STIMULUS_HOOK} hook!")
-            return
-
-        #Set up the command to include the stimulus file.
-        self.rhythm_stimulus_script += f"stimulusFile( \"{stimulus_file}\" )"
-
-        #Copy stimulus file into the results directory. 
-        shutil.copy(stimulus_file, os.path.join(self.full_rundir,stimulus_file))
-
-
-    def save_scalar_results(self, results_list):
-        """results_list should have the form of tuples, where the entries are:
-           1. Name
-           2. type (IDC, IT, etc) and
-           3. hierarchical path of the node under test.
-           second entry is the hierarchical path of that result."""
-        
-        #Create save statements and variable grabbing statements.
-        for r in results_list:
-            name = r[0]
-            var_type = r[1]
-            path = r[2]
-            if var_type.startswith("I"):
-                save_type = "'i"
-            else:
-                save_type = "'v"
-            
-            
-            self.rhythm_save_script += f"save( {save_type} \"{path}\" )\n"
-            self.rhythm_post_script += f"{name} = {var_type}(\"{path}\")\n"
-
-        #Create statements to write to file.
-        self.rhythm_post_script += "\nwrite_file = outfile( \"scalar_results.txt\" \"w\" )\n"
-
-        for r in results_list:
-            name = r[0]
-            self.rhythm_post_script += f"errset( fprintf( write_file \"{name} = %g\\n\" {name} ) t )\n"
-            
-        self.rhythm_post_script += "close( write_file )\n"
-            
-   
-    def get_scalar_results(self):
-        return SimpleNamespace(**self.scalar_results_to_dict())
-
-
-    def scalar_results_to_dict(self):
-        """Loads scalar results into a dictionary."""
-        path = os.path.join(self.full_rundir,"scalar_results.txt")
-        result = {}
-        with open(path, "r") as f:
-            for lineno, line in enumerate(f, 1):
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-
-                try:
-                    name, value = line.split("=", 1)
-                    result[name.strip()] = float(value.strip())
-                except ValueError:
-                    raise ValueError(f"Invalid format on line {lineno}: {line}")
-
-        return result
-    
 
 
     def run(self, interactive=False):
@@ -225,11 +229,46 @@ class Recipe():
         self.compile_recipe(interactive)
         self.log.info("Running simulation...")
         
+        ## 3) Run! ##
         subprocess.run(OCEAN_COMMAND, cwd=self.full_rundir)
         self.log.info("Simulation complete!")
 
-        for a in self.analysis_tasks:
-            self._txt_to_csv(a)
+        self.do_post_run_tasks()
+
+    
+    def do_post_run_tasks(self):
+        for a in self.post_run_tasks:
+            if a[0] == "txt_to_csv":
+                self._txt_to_csv(a[1])
+            else:
+                self.log.error(f"Unrecognized post-run task {a[0]}.")
+
+    ####################
+    # Analysis Methods #
+    ####################
+
+    def get_scalar_results(self):
+        return SimpleNamespace(**self.scalar_results_to_dict())
+
+
+    def scalar_results_to_dict(self):
+        """Loads scalar results into a dictionary."""
+        path = os.path.join(self.full_rundir,"scalar_results.txt")
+        result = {}
+        with open(path, "r") as f:
+            for lineno, line in enumerate(f, 1):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                try:
+                    name, value = line.split("=", 1)
+                    result[name.strip()] = float(value.strip())
+                except ValueError:
+                    raise ValueError(f"Invalid format on line {lineno}: {line}")
+
+        return result
+    
 
     def launch_viva(self):
         results_dir = self.get_results_dir()
@@ -237,6 +276,7 @@ class Recipe():
             self.log.info("Viva can only automatically open the results directory if it is defined in ocean/rhythm")
             viva_cmd = ["viva"]
         else:
+            self.log.info(f"Opening results at {results_dir} with ViVA")
             viva_cmd = ["viva", "-datadir", results_dir]
         subprocess.run(viva_cmd)
 
@@ -276,7 +316,13 @@ class Recipe():
         text = self.ocn_script
         m = re.search(r'resultsDir\s*\(\s*"(.*?)"\s*\)', text)
         if m:
-            return m.group(1)
+            resultsDir = m.group(1)
+            if resultsDir.startswith("/"):
+                #Absolute path to resultsDir
+                return resultsDir 
+            else:
+                #Relative path to resultsDir
+                return os.path.join(self.full_rundir, resultsDir)
         return None
 
     def save_results_local(self):
