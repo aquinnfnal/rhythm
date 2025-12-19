@@ -37,6 +37,25 @@ def str_datetimestamp():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def format_hms(seconds: int) -> str:
+    """Convert seconds into a string like '2h 5m 10s', 
+    omitting hours/minutes when they are zero."""
+    if seconds < 0:
+        raise ValueError("seconds must be non-negative")
+
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+
+    parts = []
+    if h > 0:
+        parts.append(f"{h}h")
+    if m > 0 or h > 0:   # include minutes if nonzero OR if hours were shown
+        parts.append(f"{m}m")
+    parts.append(f"{s}s")
+
+    return " ".join(parts)
+
 
 
 class Record():
