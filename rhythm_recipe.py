@@ -15,6 +15,7 @@ import shutil
 from types import SimpleNamespace
 from rhythm_logger import RhythmLogger
 from rhythm_utils import *
+from rhythm_waveforms import Waveform, WaveformSet
 
 # Define hooks
 #RHYTHM_VARIABLES_HOOK = "$RHYTHM_VARIABLES"
@@ -34,6 +35,7 @@ class Recipe():
         self.cdslib = None         #cds.lib file
         self.setup_scripts = []    #Scripts that should be sourced before running simulations (i.e. setup.csh)
         self.post_run_tasks = []
+        self.waves = None
 
         #Portions of the OCEAN script that rhythm can generate.
         #self.rhythm_variables_script = ""
@@ -67,6 +69,12 @@ class Recipe():
     ##########################
     # Stage Loading Methods  #
     ##########################
+
+    def clear(self):
+        """Clear all loaded stages."""
+        self.post_run_tasks=[]
+        self.ocn_script = ""
+        self.waves = None
 
     def load_stage(self, stage_tuple):
         if stage_tuple[0] == "ocnScript":
@@ -167,11 +175,26 @@ class Recipe():
         self.ocn_script += "close( write_file )\n"
 
     
-    def load_stage_printCSV(self,output_name):
+    def load_stage_printWaves(self,results_list):
         """Instruct rhythm to save a particular output with a particular method."""
-        self.ocn_script += f"\nocnPrint( ?output \"{output_name}.txt\" "
-        self.ocn_script += f"?numberNotation `engineering {output_name} )"
-        self.post_run_tasks.append(("txt_to_csv",output_name))
+        
+        #Group a list of all the names of results separated by spaces
+        #so they can all be printed to the same TXT.
+        name_list = []
+
+        for r in results_list:
+            name = r[0]
+            var_type = r[1]
+            path = r[2]
+            self.ocn_script += f"\n{name} = {var_type}(\"{path}\")\n"
+            name_list.append(name)
+            
+        name_list_str = " ".join(name_list)
+        self.ocn_script += f"ocnPrint( ?output \"waves.txt\" "
+        self.ocn_script += f"?numberNotation `engineering {name_list_str} )\n"
+        
+        self.waves = WaveformSet(os.path.join(self.full_rundir,"waves.txt"),name_list)
+        self.post_run_tasks.append(("create_wave_set",None))
 
 
     ###########################
@@ -222,7 +245,7 @@ class Recipe():
             return
         
 
-        OCEAN_COMMAND = ["ocean","-restore","compiled_recipe.ocn",">","simulation.log","2>&1", "-cdslib",self.cdslib]
+        OCEAN_COMMAND = ["ocean","-restore","compiled_recipe.ocn","-cdslib",self.cdslib]
 
 
         ## 2) Final compilation of recipe. ##
@@ -230,16 +253,25 @@ class Recipe():
         self.log.info("Running simulation...")
         
         ## 3) Run! ##
-        subprocess.run(OCEAN_COMMAND, cwd=self.full_rundir)
+        with open("simulation.log","w") as write_file:
+            #Monitor the log file in a terminal separate from RHYTHM's outputs.
+            tail_proc = subprocess.Popen(["gnome-terminal","--title=RHYTHM Simulation Log","--","tail","-f","simulation.log"])
+
+            subprocess.run(OCEAN_COMMAND, 
+                           cwd=self.full_rundir,
+                           stdout=write_file,
+                           stderr=write_file)
         self.log.info("Simulation complete!")
+
+        tail_proc.terminate()
 
         self.do_post_run_tasks()
 
     
     def do_post_run_tasks(self):
         for a in self.post_run_tasks:
-            if a[0] == "txt_to_csv":
-                self._txt_to_csv(a[1])
+            if a[0] == "create_wave_set":
+                self.waves.load_file()
             else:
                 self.log.error(f"Unrecognized post-run task {a[0]}.")
 
@@ -308,6 +340,7 @@ class Recipe():
                 rows.append(parts)
 
         # Write out to CSV
+        print("DBG:  ",rows)
         with open(csv_filename, "w", newline="") as out:
             writer = csv.writer(out)
             writer.writerows(rows)

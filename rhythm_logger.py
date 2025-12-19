@@ -14,6 +14,7 @@ class RhythmLogger:
     # Level constants
     DEBUG = 10
     INFO = 20
+    WARNING = 25
     ERROR = 30
 
     # ANSI escape sequences (will be disabled automatically if not a TTY)
@@ -93,6 +94,19 @@ class RhythmLogger:
             except Exception:
                 msg = f"{msg} {args} {kwargs}"
         line = self._format("INFO", msg, "green")
+        with self._lock:
+            print(line, file=self.stream)
+
+    def warning(self, msg, *args, **kwargs):
+        """Log an info message (visible when level <= INFO)."""
+        if self.level > self.INFO:
+            return
+        if args or kwargs:
+            try:
+                msg = msg.format(*args, **kwargs)
+            except Exception:
+                msg = f"{msg} {args} {kwargs}"
+        line = self._format("WARNING", msg, "yellow")
         with self._lock:
             print(line, file=self.stream)
 
