@@ -1,4 +1,5 @@
 import threading
+import traceback
 import queue
 import time
 import json
@@ -93,6 +94,7 @@ class Campaign:
                 result.return_value = func(*args, **kwargs)
             except Exception as e:
                 result.exception = repr(e)
+                traceback.print_exc()
             finally:
                 result.runtime_sec = time.time() - start
                 result.status = "COMPLETED" if result.exception is None else "FAILED"
@@ -232,6 +234,8 @@ class Campaign:
 
         self.results = results
 
+        return self.results
+
 
 
 
@@ -241,7 +245,7 @@ class Campaign:
 
         Parameters
         ----------
-        fmt : {"ascii", "csv", "markdown"}
+        fmt : {"ascii", "csv", "markdown", "raw"}
             Output format. Default is "ascii".
 
         Assumes each Result.return_value is a dict:
@@ -254,7 +258,7 @@ class Campaign:
         """
 
         fmt = fmt.lower()
-        if fmt not in {"ascii", "csv", "markdown"}:
+        if fmt not in {"ascii", "csv", "markdown", "raw"}:
             raise ValueError(f"Unsupported format: {fmt}")
 
         # ---- Flatten results into rows ----
@@ -274,6 +278,9 @@ class Campaign:
 
         if not rows:
             return "<no results>"
+
+        if fmt == "raw":
+            return rows
 
         # ---- Column logic ----
         show_function_col = len(self.results) > 1
@@ -323,7 +330,9 @@ class Campaign:
 
     def _format_args(self, args, kwargs) -> str:
         parts = [repr(a) for a in args]
-        parts += [f"{k}={v!r}" for k, v in kwargs.items()]
+        for k, v in kwargs.items():
+            if "quiet" not in k:
+                parts += [f"{k}={v!r}"]
         return ", ".join(parts)
 
 

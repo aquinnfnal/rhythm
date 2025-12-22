@@ -71,12 +71,19 @@ class Record():
             #actually want to overwrite it. :)
             shutil.copy(filename, filename+"~")
 
+        #If the directory this record lives in doesn't exist, then make it.
+        directory = os.path.dirname(filename)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
         #Start off the record, overwriting whatever was there.
+        print(f"<DBG> starting new record at {self.filename}")
         with open(self.filename,'w') as write_file:
             write_file.write(f"//RHYTHM Record generated at {str_datetimestamp()}\n")
 
 
     def write(self, write_string):
+        print(f"<DBG> writing to record at {self.filename}")
         with open(self.filename,'a') as write_file:
             write_file.write(write_string)
         self.log.info(write_string)

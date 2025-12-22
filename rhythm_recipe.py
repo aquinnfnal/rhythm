@@ -131,7 +131,7 @@ class Recipe():
         rhythm_stimulus_script = f"\nstimulusFile( \"{stimulus_file_name}\" )\n"
 
         #Copy stimulus file into the results directory. 
-        shutil.copy(stimulus_file, os.path.join(self.full_rundir,stimulus_file_name))
+        shutil.copyfile(stimulus_file, os.path.join(self.full_rundir,stimulus_file_name))
 
         self.ocn_script += rhythm_stimulus_script
 
@@ -141,6 +141,7 @@ class Recipe():
            1. Name
            2. type (IDC, IT, etc) and
            3. hierarchical path of the node under test.
+           4. (OPTIONAL) The value of the independent variable at which to capture this result, if any.
            second entry is the hierarchical path of that result."""
         
         #Create save statements and variable grabbing statements.
@@ -167,16 +168,14 @@ class Recipe():
 
         for r in results_list:
             name = r[0]
-            var_type = r[1]
-            path = r[2]
-            self.ocn_script += f"{name} = {var_type}(\"{path}\")\n"
+            self.ocn_script += self._fmt_result_statement(r)
             self.ocn_script += f"errset( fprintf( write_file \"{name} = %g\\n\" {name} ) t )\n"
             
         self.ocn_script += "close( write_file )\n"
 
     
     def load_stage_printWaves(self,results_list):
-        """Instruct rhythm to save a particular output with a particular method."""
+        """Instruct rhythm to print output waves to a text file."""
         
         #Group a list of all the names of results separated by spaces
         #so they can all be printed to the same TXT.
@@ -184,9 +183,7 @@ class Recipe():
 
         for r in results_list:
             name = r[0]
-            var_type = r[1]
-            path = r[2]
-            self.ocn_script += f"\n{name} = {var_type}(\"{path}\")\n"
+            self.ocn_script += self._fmt_result_statement(r)
             name_list.append(name)
             
         name_list_str = " ".join(name_list)
@@ -196,6 +193,19 @@ class Recipe():
         self.waves = WaveformSet(os.path.join(self.full_rundir,"waves.txt"),name_list)
         self.post_run_tasks.append(("create_wave_set",None))
 
+
+    def _fmt_result_statement(self, r):
+        """Given a tuple describing the result, this function will return a string
+           which will save the result to a variable."""
+        name = r[0]
+        var_type = r[1]
+        path = r[2]
+        if len(r) > 3:
+            value_at = r[3]
+            return f"{name} = value( {var_type}(\"{path}\") {value_at})\n"
+        else:
+            value_at = None
+            return f"{name} = {var_type}(\"{path}\")\n"
 
     ###########################
     # Compile and Run Methods #
@@ -231,7 +241,7 @@ class Recipe():
                 write_file.write("\nexit()")
 
 
-    def run(self, interactive=False):
+    def run(self, interactive=False, quiet=False):
         """Run the Recipe"""
 
         ## 1) Check that all appropriate variables are defined. ##
@@ -259,8 +269,9 @@ class Recipe():
         sim_log = os.path.join(self.full_rundir, "simulation.log")
         sim_log_short = os.path.join(self.rundir,"simulation.log")
         with open(sim_log,"w") as write_file:
-            #Monitor the log file in a terminal separate from RHYTHM's outputs.
-            tail_proc = subprocess.Popen(["xterm","-T",f"RHYTHM ({sim_log_short})","-e","tail","-f",sim_log])
+            if not quiet:
+                #Monitor the log file in a terminal separate from RHYTHM's outputs.
+                tail_proc = subprocess.Popen(["xterm","-T",f"RHYTHM ({sim_log_short})","-e","tail","-f",sim_log])
 
             subprocess.run(OCEAN_COMMAND, 
                            cwd=self.full_rundir,
@@ -273,7 +284,8 @@ class Recipe():
         
         if not self.find_log_errors(sim_log_txt):
             self.log.info("Simulation complete!")
-            tail_proc.terminate()
+            if not quiet:
+                tail_proc.terminate()
             self.do_post_run_tasks()
 
     def find_log_errors(self, sim_log_txt):
