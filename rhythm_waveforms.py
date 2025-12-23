@@ -72,6 +72,17 @@ class Waveform:
         self._check_compatibility(other)
         return Waveform(self.x, self.y - other.y, name=f"({self.name}-{other.name})")
 
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self,key):
+        return self.y[key]
+
+    def __truediv__(self, other):
+        #Numeric division
+        if isinstance(other, (int, float)):
+            return Waveform(self.x, self.y / other, name=f"({self.name}/{other})")
+
     def _check_compatibility(self, other):
         if not np.array_equal(self.x, other.x):
             raise ValueError("Independent variables do not match")

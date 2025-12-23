@@ -200,12 +200,19 @@ class Recipe():
         name = r[0]
         var_type = r[1]
         path = r[2]
-        if len(r) > 3:
+
+        if len(r) < 4:
+            return f"{name} = {var_type}(\"{path}\")\n"
+
+        #Argument 4 can be an expression, or if it's a single number it will be treated as value_at.
+        if type(r[3]) == str:
+            expression = r[3]
+            return f"{name} = {expression}\n"
+        else:
             value_at = r[3]
             return f"{name} = value( {var_type}(\"{path}\") {value_at})\n"
-        else:
-            value_at = None
-            return f"{name} = {var_type}(\"{path}\")\n"
+        
+            
 
     ###########################
     # Compile and Run Methods #
@@ -268,12 +275,18 @@ class Recipe():
         ## 3) Run! ##
         sim_log = os.path.join(self.full_rundir, "simulation.log")
         sim_log_short = os.path.join(self.rundir,"simulation.log")
-        with open(sim_log,"w") as write_file:
-            if not quiet:
-                #Monitor the log file in a terminal separate from RHYTHM's outputs.
-                tail_proc = subprocess.Popen(["xterm","-T",f"RHYTHM ({sim_log_short})","-e","tail","-f",sim_log])
-
+        
+        if interactive:
             subprocess.run(OCEAN_COMMAND, 
+                           cwd=self.full_rundir)
+                
+        else:
+            with open(sim_log,"w") as write_file:
+                if not quiet:
+                    #Monitor the log file in a terminal separate from RHYTHM's outputs.
+                    tail_proc = subprocess.Popen(["xterm","-T",f"RHYTHM ({sim_log_short})","-e","tail","-f",sim_log])
+                
+                subprocess.run(OCEAN_COMMAND, 
                            cwd=self.full_rundir,
                            stdout=write_file,
                            stderr=write_file)
