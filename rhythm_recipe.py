@@ -160,11 +160,11 @@ class Recipe():
 
         self.ocn_script += "\n"+save_script
 
-    def load_stage_printScalars(self, results_list):
+    def load_stage_printScalars(self, results_list, filename="scalar_results.txt"):
         """Prints scalar results to a txt file. Syntax is the same as load_saveResults()"""
                 
         #Create statements to write to file.
-        self.ocn_script += "\nwrite_file = outfile( \"scalar_results.txt\" \"w\" )\n"
+        self.ocn_script += f"\nwrite_file = outfile( \"{filename}\" \"w\" )\n"
 
         for r in results_list:
             name = r[0]
@@ -173,6 +173,13 @@ class Recipe():
             
         self.ocn_script += "close( write_file )\n"
 
+
+    def load_stage_plot(self, results_list):
+        """Sets up results to be plotted."""
+        for r in results_list:
+            name = r[0]
+            self.ocn_script += self._fmt_result_statement(r)
+            self.ocn_script += f"plot( {name} ?expr '( \"{name}\" ) )\n"
     
     def load_stage_printWaves(self,results_list):
         """Instruct rhythm to print output waves to a text file."""
@@ -297,7 +304,7 @@ class Recipe():
         
         if not self.find_log_errors(sim_log_txt):
             self.log.info("Simulation complete!")
-            if not quiet:
+            if not interactive and not quiet:
                 tail_proc.terminate()
             self.do_post_run_tasks()
 
@@ -319,13 +326,13 @@ class Recipe():
     # Analysis Methods #
     ####################
 
-    def get_scalar_results(self):
-        return SimpleNamespace(**self.scalar_results_to_dict())
+    def get_scalar_results(self, filename="scalar_results.txt"):
+        return SimpleNamespace(**self.scalar_results_to_dict(filename))
 
 
-    def scalar_results_to_dict(self):
+    def scalar_results_to_dict(self,filename="scalar_results.txt"):
         """Loads scalar results into a dictionary."""
-        path = os.path.join(self.full_rundir,"scalar_results.txt")
+        path = os.path.join(self.full_rundir,filename)
         result = {}
         with open(path, "r") as f:
             for lineno, line in enumerate(f, 1):

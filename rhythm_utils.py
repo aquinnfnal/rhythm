@@ -112,7 +112,8 @@ class PnoiseAnalysis():
             "trig_p"  : "positive terminal of the sample trigger",
             "trig_n"  : "negative terminal of the sample trigger",
             "trig_dir": "trigger direction (rise or fall)",
-            "trig_thresh": "trigger threshold [V]"}
+            "trig_thresh": "trigger threshold [V]",
+            "maxsideband"  : "max sideband considered for up/downconverted noise"}
 
     ALLOWED_VALS = {"pnoisemethod": ["fullspectrum","default"],
                     "noisetype"   : ["timeaverage","sampled"],
@@ -130,6 +131,7 @@ class PnoiseAnalysis():
         self.trig_n = None
         self.trig_dir = None
         self.trig_thresh = None
+        self.maxsideband = None
 
         self.args = []
 
@@ -153,7 +155,7 @@ class PnoiseAnalysis():
     def validate(self):
         """Validates that the fields supplied by the user are sufficient to build a valid
            Pnoise analysis. Returns True or False."""
-        valid1 = self.check_fields(["start","stop","pnoisemethod","noisetype","noise_p","noise_n"],
+        valid1 = self.check_fields(["start","stop","pnoisemethod","noisetype","noise_p","noise_n","maxsideband"],
                              "Field required by default.")
 
         if self.noisetype == "sampled":
@@ -173,6 +175,7 @@ class PnoiseAnalysis():
 
         self.args += ["?start",f"\"{self.start}\"","?stop",f"\"{self.stop}\""]
         self.args += ["?pnoisemethod",f"\"{self.pnoisemethod}\""]
+        self.args += ["?maxsideband",f"\"{self.maxsideband}\""]
 
         if self.noisetype == "timeaverage":
             self.args += ["?p",f"\"{self.noise_p}\"","?n",f"\"{self.noise_n}\""]
