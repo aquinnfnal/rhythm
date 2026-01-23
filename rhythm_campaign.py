@@ -7,16 +7,18 @@ import os
 import sys
 from typing import Any, Callable, Dict, List, Tuple, Optional
 from rhythm_utils import *
+import inspect
 
 # ---------- Result object ----------
 
 
 class Result:
 
-    def __init__(self,function, args, kwargs={}, return_value=None,
+    def __init__(self,function, args, argnames, kwargs={}, return_value=None,
                  exception=None,runtime_sec=None, status=None):
         self.function = function
         self.args = args
+        self.argnames = argnames #Argument names, used for building a table.
         self.kwargs = kwargs
         self.return_value = return_value
         self.exception = exception
@@ -26,6 +28,7 @@ class Result:
     def as_dict(self):
         return {"function": self.function,
                 "args"    : self.args,
+                "argnames": self.argnames,
                 "kwargs"  : self.kwargs,
                 "return_value": self.return_value,
                 "exception" : self.exception,
@@ -76,6 +79,8 @@ class Campaign:
 
             func, args, kwargs = self.job_meta[job_id]
             func_name = func.__name__
+            func_sig = inspect.signature(func)
+            argnames = list(func_sig.parameters.keys())
 
             # If the user puts in None for kwargs, we can interpret
             # that as an empty mapping (avoiding errors).
@@ -88,6 +93,7 @@ class Campaign:
             result = Result(
                 function=func_name,
                 args=args,
+                argnames=argnames,
                 kwargs=kwargs)
 
             try:
@@ -225,6 +231,7 @@ class Campaign:
                 result = Result(
                     function=rdict.get("function", func_name),
                     args=tuple(rdict.get("args", [])),
+                    argnames=tuple(rdict.get("argnames",[])),
                     kwargs=dict(rdict.get("kwargs", {})),
                     return_value=rdict.get("return_value"),
                     exception=rdict.get("exception"),
@@ -272,6 +279,7 @@ class Campaign:
 
                 rows.append({
                     "function": func_name,
+                    "argnames": r.argnames,
                     "args": self._format_args(r.args, r.kwargs),
                     "results": result_dict,
                 })
@@ -296,7 +304,13 @@ class Campaign:
         headers = []
         if show_function_col:
             headers.append("Function")
-        headers.append("Arguments")
+            
+        #Note this strategy for printing the header relies on the fact that we are
+        #only running a single function with a fixed # of args.
+        for argname in rows[0]["argnames"]:
+            if self._printable_argname(argname):
+                headers.append(argname)
+        #headers.append("Arguments")
         headers.extend(result_keys)
 
         # ---- Build table matrix ----
@@ -307,7 +321,9 @@ class Campaign:
             if show_function_col:
                 line.append(row["function"])
 
-            line.append(row["args"])
+            for arg in row["args"].split(','):
+                line.append(arg)
+            #line.append(row["args"].split(","))
 
             for key in result_keys:
                 val = row["results"].get(key, "")
@@ -331,12 +347,21 @@ class Campaign:
     def _format_args(self, args, kwargs) -> str:
         parts = [repr(a) for a in args]
         for k, v in kwargs.items():
-            if "quiet" not in k:
+            if self._printable_argname(k):
                 parts += [f"{k}={v!r}"]
         return ", ".join(parts)
 
 
+    def _printable_argname(self,argname):
+        """Returns true if this argument should be printed (most args)
+           Returns false for meta arguments like "quiet" and "interactive" """
+        if "quiet" in argname or "interactive" in argname:
+            return False
+        else:
+            return True
+
     def _emit_ascii_table(self, table) -> str:
+        print(table)
         col_widths = [
             max(len(str(row[i])) for row in table)
             for i in range(len(table[0]))
