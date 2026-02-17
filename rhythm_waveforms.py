@@ -55,11 +55,11 @@ class Waveform:
             )
             return None
 
-        print(y_value)
-        print(self.y)
-        print(self.x)
+        #print(y_value)
+        #print(self.y)
+        #print(self.x)
         result =  custom_interp(y_value, self.y, self.x)
-        print(result)
+        #print(result)
         if result is None:
             self.log.error(f"Failed to interpolate {self.name}.x_when_y_at({y_value})")
         return result
@@ -111,8 +111,13 @@ class WaveformSet:
                 if self.x_name is None:
                     self.x_name = line.split()[0]
                 continue
-            columns = re.split(r"\s{4,}", line)
-            data.append([float(c) for c in columns])
+            
+            #Only attempt to get data from lines if they at least start with a numeric
+            #character. This allows us to ignore text lines, like the "iteration 1" that
+            #gets added to Monte Carlo results. 
+            if line[0].isdigit():
+                columns = re.split(r"\s{4,}", line)
+                data.append([float(c) for c in columns])
 
         data = np.array(data)
         x = data[:, 0]

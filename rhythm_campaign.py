@@ -6,6 +6,8 @@ import json
 import os
 import sys
 from typing import Any, Callable, Dict, List, Tuple, Optional
+import math
+from collections import defaultdict
 from rhythm_utils import *
 import inspect
 
@@ -134,23 +136,36 @@ class Campaign:
         lines.append(f"          It is now: {str_datetimestamp()}")
         lines.append(f"Campaign status  {self.completed_jobs}/{self.total_jobs} completed\n")
 
+        queued_count = 0
+        running_count = 0
+
         for job_id in range(self.total_jobs):
             status = self.job_status[job_id]
             func, args, _ = self.job_meta[job_id]
 
-            if status == "QUEUED":
-                color = BLUE
-            elif status == "RUNNING":
-                color = YELLOW
-            elif status == "COMPLETED":
-                color = GREEN
-            else:
-                color = RED
+            if self.total_jobs < 40:
 
-            lines.append(
-                f"{color}[{job_id:03d}] {status:<10} "
-                f"{func.__name__}{args}{RESET}"
-            )
+                if status == "QUEUED":
+                    color = BLUE
+                elif status == "RUNNING":
+                    color = YELLOW
+                elif status == "COMPLETED":
+                    color = GREEN
+                else:
+                    color = RED
+
+                lines.append(
+                    f"{color}[{job_id:03d}] {status:<10} "
+                    f"{func.__name__}{args}{RESET}"
+                )
+            else:
+                if status == "QUEUED":
+                    queued_count += 1
+                elif status == "RUNNING":
+                    running_count += 1
+
+        if self.total_jobs >= 40:
+            lines.append(f"\n{BLUE}[{queued_count} QUEUED] {GREEN}[{running_count} RUNNING]")
 
         if final:
             lines.append("\nCampaign finished.\n")
@@ -246,7 +261,7 @@ class Campaign:
 
 
 
-    def create_scalar_table(self, fmt: str = "ascii") -> str:
+    def create_scalar_table(self, fmt: str = "ascii", result_keys=None) -> str:
         """
         Generate a formatted summary table of campaign results.
 
@@ -257,6 +272,9 @@ class Campaign:
 
         Assumes each Result.return_value is a dict:
             {str result_name: numeric_value}
+
+        result_keys: Optional list of result names to be included in the table.
+                     If not supplied, ALL results will be included in the table.
 
         Returns
         -------
@@ -292,7 +310,8 @@ class Campaign:
 
         # ---- Column logic ----
         show_function_col = len(self.results) > 1
-        result_keys = sorted(all_result_keys)
+        if result_keys is None:
+            result_keys = sorted(all_result_keys)
 
         # ---- Sort rows ----
         if show_function_col:
@@ -344,6 +363,183 @@ class Campaign:
         if fmt == "csv":
             return self._emit_csv(table)
 
+
+
+    def compute_stats(self, specs=None):
+        """
+        Compute statistics for numeric results across all runs.
+
+        Parameters
+        ----------
+        specs : dict or None
+            Optional spec dictionary of the form:
+            { "result_name": [min_val, max_val] }
+            Either min_val or max_val may be None.
+
+        Returns
+        -------
+        dict
+            {
+              function_name: {
+                  result_name: {
+                      "mean": float,
+                      "std": float,
+                      "min": float,
+                      "max": float,
+                      "spec_min": float or None,
+                      "spec_max": float or None,
+                      "spec_pass": bool or None
+                  },
+                  ...
+              },
+              ...
+            }
+        """
+        specs = specs or {}
+        stats = {}
+
+        for func_name, result_list in self.results.items():
+            values_by_key = defaultdict(list)
+
+            for res in result_list:
+                ret = res.return_value
+                if not isinstance(ret, dict):
+                    continue
+
+                for key, value in ret.items():
+                    if isinstance(value, (int, float)):
+                        values_by_key[key].append(value)
+
+            func_stats = {}
+
+            for key, values in values_by_key.items():
+                if not values:
+                    continue
+
+                mean = sum(values) / len(values)
+
+                if len(values) > 1:
+                    var = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+                    std = math.sqrt(var)
+                else:
+                    std = 0.0
+
+                vmin = min(values)
+                vmax = max(values)
+
+                spec_min, spec_max = specs.get(key, (None, None))
+
+                if spec_min is None and spec_max is None:
+                    spec_pass = None
+                else:
+                    spec_pass = True
+                    if spec_min is not None and vmin < spec_min:
+                        spec_pass = False
+                    if spec_max is not None and vmax > spec_max:
+                        spec_pass = False
+
+                func_stats[key] = {
+                    "mean": mean,
+                    "std": std,
+                    "min": vmin,
+                    "max": vmax,
+                    "spec_min": spec_min,
+                    "spec_max": spec_max,
+                    "spec_pass": spec_pass,
+                }
+
+            stats[func_name] = func_stats
+
+        return stats
+
+
+    def stats_table(self, specs=None, float_format="{:.6g}"):
+        """
+        Print statistics in table form, including min/max and spec compliance.
+
+        Parameters
+        ----------
+        specs : dict or None
+            Spec dictionary passed through to compute_stats().
+        float_format : str
+            Format string for floating-point values.
+        """
+        stats = self.compute_stats(specs=specs)
+
+        return_str = ""
+
+        for func_name, func_stats in stats.items():
+            if not func_stats:
+                continue
+
+            return_str += f"\n=== Statistics for {func_name} ===\n"
+
+            # Column widths
+            name_width = max(len(name) for name in func_stats.keys())
+            num_cols = ["Mean", "Std Dev", "Min", "Max"]
+            COL_WIDTH = 10
+            #widths = {col: len(col)+2 for col in num_cols}
+            spec_width = len("Spec")
+            pass_width = len("Pass")
+
+            #for vals in func_stats.values():
+                #for col, key in zip(num_cols, ["mean", "std", "min", "max"]):
+                #    widths[col] = max(
+                #        widths[col],
+                #        len(float_format.format(vals[key]))
+                #    )
+
+             #   if vals["spec_min"] is not None or vals["spec_max"] is not None:
+             #       spec_str = f"[{vals['spec_min']},{vals['spec_max']}]"
+             #       spec_width = max(spec_width, len(spec_str))
+             #       pass_width = max(pass_width, len("PASS"))
+
+            # Header
+            header = (
+                f"{'Result':<{COL_WIDTH}}"
+                f"{'Mean':>{COL_WIDTH}}"
+                f"{'StdDev':>{COL_WIDTH}}"
+                f"{'Min':>{COL_WIDTH}}"
+                f"{'Max':>{COL_WIDTH}}"
+            )
+
+            if specs:
+                header += (
+                    f"  {'Spec':^{COL_WIDTH}}  "
+                    f"{'Pass':^{COL_WIDTH}}"
+                )
+
+            return_str += header +"\n"
+            return_str += "-" * len(header) + "\n"
+
+            # Rows
+            for name, vals in func_stats.items():
+                row = ""
+                row += f"{name:<{COL_WIDTH}}"
+                for valname in ["mean", "std", "min", "max"]:
+                    row += f"{si_fmt(vals[valname]):>{COL_WIDTH}}"
+                
+
+                if specs:
+                    if vals["spec_min"] is None and vals["spec_max"] is None:
+                        spec_str = ""
+                        pass_str = ""
+                    else:
+                        spec_str = f"[{vals['spec_min']},{vals['spec_max']}]"
+                        pass_str = "PASS" if vals["spec_pass"] else "FAIL"
+
+                    row += (
+                        f"  {spec_str:^{spec_width}}  "
+                        f"{pass_str:^{pass_width}}"
+                    )
+
+                return_str += row + "\n"
+
+        return return_str
+
+
+
+
     def _format_args(self, args, kwargs) -> str:
         parts = [repr(a) for a in args]
         for k, v in kwargs.items():
@@ -382,7 +578,7 @@ class Campaign:
                 lines.append(sep("="))
         lines.append(sep())
 
-        return "\n".join(lines)
+        return "\n".join(lines) + "\n"
 
 
     def _emit_markdown_table(self, table) -> str:

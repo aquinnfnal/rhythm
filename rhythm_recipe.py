@@ -36,6 +36,7 @@ class Recipe():
         self.setup_scripts = []    #Scripts that should be sourced before running simulations (i.e. setup.csh)
         self.post_run_tasks = []
         self.waves = None
+        self.spectreSnip_count = 0 #Number of Spectre snippets injected in this recipe. Used for file indexing.
 
         #Portions of the OCEAN script that rhythm can generate.
         #self.rhythm_variables_script = ""
@@ -135,6 +136,20 @@ class Recipe():
 
         self.ocn_script += rhythm_stimulus_script
 
+
+    def load_stage_spectreSnip(self, spectre_code):
+        """Given a snippet of Spectre code, use a hack to inject it into the final spectre netlist."""
+        
+        filename = os.path.join(self.full_rundir,f"spectreSnip_{self.spectreSnip_count}.scs")
+        self.spectreSnip_count += 1
+
+        with open(filename,"w") as write_file:
+            write_file.write(spectre_code)
+
+        #Hack: Put the spectre code in as a "stimulus file"
+        self.ocn_script += f"\nstimulusFile( \"{filename}\" )\n"
+        
+    
 
     def load_stage_saveResults(self, results_list):
         """results_list should have the form of tuples, where the entries are:
