@@ -1,5 +1,7 @@
 # Rhythm Stage Commands
 
+[(Click to return to Rhythm Docs Overview)](</docs/README.md>)
+
 These commands are used to create test stages in Rhythm. There are two ways to use a stage command:
 
 1) Directly call the function.
@@ -16,7 +18,7 @@ tb.load_stage(my_stage)
 ```
 
 
-##ocnScript
+## ocnScript
 
 Loads an OCEAN script from file.
 
@@ -24,7 +26,7 @@ Loads an OCEAN script from file.
 
 **Arguments:** (str) path to .ocn file.
 
-##ocnSnip
+## ocnSnip
 
 Loads a snippet of OCEAN code.
 
@@ -32,7 +34,7 @@ Loads a snippet of OCEAN code.
 
 **Arguments:** (str) snippet of OCEAN code.
 
-##variables
+## variables
 
 Given a dictionary which maps variable names (str) to values (num), this function will generate a set of desVar() commands.
 
@@ -40,7 +42,7 @@ Given a dictionary which maps variable names (str) to values (num), this functio
 
 **Arguments:** (dict) variable names (str) -> variable values (num)
 
-##stimulus
+## stimulus
 
 Use a .scs file as a stimulus for the testbench. The stimulus file will be copied into the run directory. 
 
@@ -48,7 +50,7 @@ Use a .scs file as a stimulus for the testbench. The stimulus file will be copie
 
 **Arguments:** (str) path to .scs file.
 
-##saveResults
+## saveResults
 
 Save a set of currents and voltages.
 
@@ -66,7 +68,7 @@ results_list = [("VDDA_tot", "IDC", "/Vsrc_VDDA/V0/PLUS"),
 ```
 **Note:** This command alone will not output or print anything, only save the results in the results database. If the results are scalars, the same list can be passed to ```tb.load_printScalars()```
 
-##printScalars
+## printScalars
 
 Print a set of scalar results.
 
@@ -76,12 +78,26 @@ Print a set of scalar results.
 
 **Note:** Results must have been saved before they can be printed. Include ```tb.load_saveResults()``` if needed.
 
-##printCSV
+## printWaves
 
-Print a saved result to a CSV file.
+Writes multiple waveforms to waves.txt in “engineering” notation and schedules a post-run task to parse into a `WaveformSet`.
 
-**Method:** ```tb.load_stage_printCSV()```
+**Method:** ```tb.load_stage_printWaves()```
 
-**Arguments:** (str) name of the result to print to CSV. Must have already been saved. 
+**Arguments:** Results list
 
-**Note:** OCEAN natively outputs space-delimited text files, not CSVs. So this method will also create a post-run task at the end of tb.run() to go back and parse the TXT into a CSV.
+## plot
+
+Plot functions.
+
+**Method:** ```tb.load_stage_plot()```
+
+**Arguments:** Results list
+
+## spectreSnip
+
+Inject a Spectre snippet directly into the `.scs` file (using `stimulusFile(...)` hack). 
+
+**Method:** ```tb.load_stage_spectreSnip()```
+
+**Arguments:** (string) snippet of Spectre code
