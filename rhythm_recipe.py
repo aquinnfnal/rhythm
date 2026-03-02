@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from rhythm_logger import RhythmLogger
 from rhythm_utils import *
 from rhythm_waveforms import Waveform, WaveformSet
+import rhythm_globals as rg
 
 # Define hooks
 #RHYTHM_VARIABLES_HOOK = "$RHYTHM_VARIABLES"
@@ -273,6 +274,13 @@ class Recipe():
     def run(self, interactive=False, quiet=False):
         """Run the Recipe"""
 
+        ## 0) Skip simulation if instructed.
+        if rg.GLOBAL_SKIP_SIMULATION:
+            self.log.info("Skipping simulations due to GLOBAL_SKIP_SIMULATION flag")
+            self.do_post_run_tasks()
+            return
+        
+        
         ## 1) Check that all appropriate variables are defined. ##
         if self.rundir is None:
             self.log.error("Need to specify a rundir before Recipe.run()")

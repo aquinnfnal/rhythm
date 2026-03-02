@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Callable
 import traceback
 
+import rhythm_globals as rg
 
 # ANSI helpers
 CLEAR = "\033[2J\033[H"
@@ -173,10 +174,25 @@ def main():
     functions = load_functions_from_sources(source_paths)
 
     # Parse command line
-    alias_chain_txt = sys.argv[1]
-    alias_chain = alias_chain_txt.split("+")
-    extra_args = sys.argv[2:]
+    rhythm_args = []
+    for i in range(1,len(sys.argv)):
+        if sys.argv[i].startswith("-"):
+            rhythm_args.append(sys.argv[i])
+        else:
+            #The alias chain is the first arg that doesn't start with a dash.
+            alias_chain_txt = sys.argv[i]
+            extra_args = sys.argv[(i+1):]
+            break
+    
+    for rarg in rhythm_args:
+        if rarg == "-s":
+            rg.GLOBAL_SKIP_SIMULATION = True
+        else:
+            raise KeyError(f"Unknown rhythm argument {rarg}")
 
+        
+    alias_chain = alias_chain_txt.split("+")
+        
     for alias in alias_chain:
         # Handle delay aliases: d1h30m, d45s, etc.
         if alias.startswith("d"):

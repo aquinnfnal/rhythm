@@ -7,7 +7,7 @@ import os
 import sys
 from typing import Any, Callable, Dict, List, Tuple, Optional
 import math
-from collections import defaultdict
+from collections import defaultdict, Counter
 from rhythm_utils import *
 import inspect
 
@@ -37,6 +37,64 @@ class Result:
                 "runtime_sec": self.runtime_sec}
 
 
+
+# ---------- Specification class ----------
+
+
+class Specification:
+    """
+    Specification for a single Figure of Merit (FoM).
+
+    Parameters
+    ----------
+    name : str
+        Key name in Result.return_value.
+    spec_min : Optional[float]
+        Minimum acceptable value.
+    spec_max : Optional[float]
+        Maximum acceptable value.
+    corners : Optional[List[str]]
+        Each string must appear in Campaign._format_args(args, kwargs)
+        for a Result to be considered part of that corner.
+    note : Optional[str]
+        Optional descriptive text.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        spec_min: Optional[float] = None,
+        spec_max: Optional[float] = None,
+        corners: Optional[List[str]] = None,
+        note: Optional[str] = None,
+    ):
+        self.name = name
+        self.spec_min = spec_min
+        self.spec_max = spec_max
+        self.corners = corners or []
+        self.note = note
+
+        if spec_min is None and spec_max is None:
+            raise ValueError(
+                f"Specification '{name}' must define at least one of spec_min or spec_max."
+            )
+
+    def __repr__(self):
+        return (
+            f"Specification(name={self.name!r}, "
+            f"min={self.spec_min}, max={self.spec_max}, "
+            f"corners={self.corners})"
+        )
+
+    def short_str(self):
+        if self.spec_max is None:
+            return f"{self.name} > {si_fmt(self.spec_min)}"
+        elif self.spec_min is None:
+            return f"{self.name} < {si_fmt(self.spec_max)}"
+        else:
+            return f"{si_fmt(self.spec_min)} < {self.name} < {si_fmt(self.spec_max)}"
+
+    
 # ---------- Campaign class ----------
 
 class Campaign:
@@ -347,7 +405,7 @@ class Campaign:
             for key in result_keys:
                 val = row["results"].get(key, "")
                 if isinstance(val, float):
-                    line.append(f"{val:.6g}")
+                    line.append(si_fmt(val))
                 else:
                     line.append(str(val))
 
@@ -539,6 +597,149 @@ class Campaign:
 
 
 
+    def check_specs(self, specs) -> Dict[str, Dict]:
+        """
+        Evaluate a list of Specification objects against Campaign.results.
+
+        Matching rule:
+            A Result matches a corner if and only if the corner string
+            appears in Campaign._format_args(args, kwargs) for that Result.
+
+        Returns a readable report.
+        """
+
+        # Gracefully accept lists or single specs
+        if type(specs) == Specification:
+            specs = [specs]
+        
+        spec_results = ""
+
+        # Flatten results from all function runs into a single list.
+        all_results = []
+        for _, res_list in self.results.items():
+            all_results.extend(res_list)
+            
+        for spec in specs:
+            spec_name = spec.name
+
+            #For each corner, we will assemble a corner_info dict containing:
+            #  - corner_name: The name of the corner.
+            #  - result: PASS, FAIL, N/A, etc.
+            #  - value: Value of the FoM in the corner
+            #  - min_margin: positive margin is it is above the min, negative margin is below the min
+            #  - max_margin: positive margin is below the max, negative margin is above the max.
+            corner_reports = []
+
+
+            # For each result in the list...
+            for r in all_results:
+                corner_str = self._format_args(r.args,r.kwargs)
+                spec_applies_this_corner = True
+
+                # 1) Check to make sure that all keywords in spec.corners are actually
+                #    found within the string repr of this corner, otw the spec doesn't
+                #    apply to this corner and we can move on.
+                for keyword in spec.corners:
+                    if keyword not in corner_str:
+                        spec_applies_this_corner = False
+
+                if not spec_applies_this_corner:
+                    corner_info["result"] = "N/A"
+
+                corner_info = {"corner_name": corner_str,
+                               "result"     : None,
+                               "value"      : None,
+                               "min_margin" : None,
+                               "max_margin" : None}
+
+                return_dict = r.return_value
+
+                # 2) Check to make sure we got a valid return_dict from this corner
+                if not isinstance(return_dict,dict) or spec_name not in return_dict:
+                    corner_info["result"] = "Missing Data!"
+
+                # 3) Try to get the value from this corner. 
+                try:
+                    val = float(return_dict[spec_name])
+                    corner_info["value"] = val
+                except ValueError:
+                    corner_info["result"] = "Malformed Data!"
+
+                # 3.5) If we already have a result at this point, it must be an invalid or N/A corner,
+                #      so we pre-emptively return and append it to the list.
+                if corner_info["result"] is not None:
+                    corner_reports.append(corner_info)
+                    continue
+
+                # 4) Evaluate whether this corner value is considered a pass or not.
+                corner_pass = True
+                if spec.spec_min is not None:
+                    corner_info["min_margin"] = val - spec.spec_min
+                    if corner_info["min_margin"] < 0:
+                        corner_pass = False
+
+                if spec.spec_max is not None:
+                    corner_info["max_margin"] = spec.spec_max - val
+                    if corner_info["max_margin"] < 0:
+                        corner_pass = False
+
+
+                if corner_pass:
+                    corner_info["result"] = "PASS"
+                else:
+                    corner_info["result"] = "FAIL"
+
+                corner_reports.append(corner_info)
+
+            spec_results += self._generate_spec_summary(spec, corner_reports) + "\n"
+
+        return spec_results
+
+
+
+    def _generate_spec_summary(self, spec,  corner_reports):
+        """Generate a summary of whether a specification was met across corners.
+           spec = Specification object
+           corner_reports = info on whether each corner was passed, generated by self.check_specs()
+        """
+        
+        summary = "Specification: " + spec.short_str() + "\n"
+
+        # count frequencies of each result.
+        counts = Counter(d["result"] for d in corner_reports)
+
+        # build summary string
+        summary += "Results: " + " ".join(f"{v}x {k}" for k, v in counts.items()) +"\n"
+
+        if all(d["result"] == "PASS" for d in corner_reports):
+            summary += "Overall Result: PASS\n"
+        else:
+            summary += "Overall Result: FAIL\n"
+
+        # After evaluating all the results, we go back through corner_reports to find the corner
+        # with the worst margin.
+        worst_margin = None
+        worst_corner_idx = None
+        for i in range(len(corner_reports)):
+            min_margin = corner_reports[i]["min_margin"]
+            max_margin = corner_reports[i]["max_margin"]
+            if min_margin is not None and (worst_margin is None or min_margin < worst_margin):
+                worst_margin = min_margin
+                worst_corner_idx = i
+            if max_margin is not None and (worst_margin is None or max_margin < worst_margin):
+                worst_margin = max_margin
+                worst_corner_idx = i
+
+        worst_corner_val = corner_reports[worst_corner_idx]["value"]
+        worst_corner_name = corner_reports[worst_corner_idx]["corner_name"]
+
+        summary += f"(Worst Corner was {worst_corner_name} with {spec.name}={si_fmt(worst_corner_val)})"
+
+        return summary
+
+
+    
+
 
     def _format_args(self, args, kwargs) -> str:
         parts = [repr(a) for a in args]
@@ -557,7 +758,7 @@ class Campaign:
             return True
 
     def _emit_ascii_table(self, table) -> str:
-        print(table)
+        #print(table)
         col_widths = [
             max(len(str(row[i])) for row in table)
             for i in range(len(table[0]))
