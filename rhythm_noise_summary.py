@@ -191,12 +191,13 @@ def write_summary(output_filename, noise_filename, rules_filename, summary):
                 tot_noise += group['total_noise']
 
         f.write(f"** Total Noise from Non-Ignored Groups: {tot_noise:.4e} **\n")
-
+        return tot_noise
 
 def rhythm_noise_summary(noise_file, rules_file, output_file):
 
     rules = parse_rules(rules_file)
     noise_data = parse_noise_file(noise_file)
     summary = summarize(noise_data, rules)
-    write_summary(output_file, noise_file, rules_file, summary)
+    tot_noise = write_summary(output_file, noise_file, rules_file, summary)
     print(f"Noise Summary written to {output_file}")
+    return tot_noise

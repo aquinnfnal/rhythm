@@ -17,7 +17,7 @@ import inspect
 class Result:
 
     def __init__(self,function, args, argnames, kwargs={}, return_value=None,
-                 exception=None,runtime_sec=None, status=None):
+                 exception=None,runtime_sec=None, status=None, timestamp=None):
         self.function = function
         self.args = args
         self.argnames = argnames #Argument names, used for building a table.
@@ -26,6 +26,7 @@ class Result:
         self.exception = exception
         self.runtime_sec = runtime_sec
         self.status = status
+        self.timestamp = timestamp
 
     def as_dict(self):
         return {"function": self.function,
@@ -34,7 +35,8 @@ class Result:
                 "kwargs"  : self.kwargs,
                 "return_value": self.return_value,
                 "exception" : self.exception,
-                "runtime_sec": self.runtime_sec}
+                "runtime_sec": self.runtime_sec,
+                "timestamp" : self.timestamp}
 
 
 
@@ -54,8 +56,7 @@ class Specification:
     spec_max : Optional[float]
         Maximum acceptable value.
     corners : Optional[List[str]]
-        Each string must appear in Campaign._format_args(args, kwargs)
-        for a Result to be considered part of that corner.
+        String representation of keywords that must be in the corner's arg string to match to that corner.
     note : Optional[str]
         Optional descriptive text.
     """
@@ -65,13 +66,13 @@ class Specification:
         name: str,
         spec_min: Optional[float] = None,
         spec_max: Optional[float] = None,
-        corners: Optional[List[str]] = None,
+        corners: Optional[str] = None,
         note: Optional[str] = None,
     ):
         self.name = name
         self.spec_min = spec_min
         self.spec_max = spec_max
-        self.corners = corners or []
+        self.corners = corners 
         self.note = note
 
         if spec_min is None and spec_max is None:
@@ -94,6 +95,34 @@ class Specification:
         else:
             return f"{si_fmt(self.spec_min)} < {self.name} < {si_fmt(self.spec_max)}"
 
+    def match_corner(self, corner_str):
+        """Returns True if this spec applies to a corner with the given corner_str. 
+           We expect that corners is a string containing a set of tokens joined by AND, OR, NOT, and parentheses"""
+
+        if self.corners is None:
+            return True
+        
+        tokens = self.corners.split()
+
+        expr = []
+        for tok in tokens:
+            if tok == "AND":
+                expr.append("and")
+            elif tok == "OR":
+                expr.append("or")
+            elif tok == "NOT":
+                expr.append("not")
+            elif tok in {"(",")"}:
+                expr.append(tok)
+            else:
+                #Assume this token is a keyword:
+                expr.append(f'("{tok}" in corner_str)')
+
+        expr_str = " ".join(expr)
+        #print(f"<DBG> {expr_str}")
+        result = eval(expr_str) #user inputs are trusted completely.
+        return result
+                
     
 # ---------- Campaign class ----------
 
@@ -149,11 +178,13 @@ class Campaign:
 
             self.job_status[job_id] = "RUNNING"
             start = time.time()
+            timestamp = str_datetimestamp()
 
             result = Result(
                 function=func_name,
                 args=args,
                 argnames=argnames,
+                timestamp=timestamp,
                 kwargs=kwargs)
 
             try:
@@ -356,7 +387,7 @@ class Campaign:
                 rows.append({
                     "function": func_name,
                     "argnames": r.argnames,
-                    "args": self._format_args(r.args, r.kwargs),
+                    "args": self._format_args(r.args, {}), #Don't print kwargs in this table.
                     "results": result_dict,
                 })
 
@@ -381,10 +412,19 @@ class Campaign:
         headers = []
         if show_function_col:
             headers.append("Function")
-            
-        #Note this strategy for printing the header relies on the fact that we are
-        #only running a single function with a fixed # of args.
-        for argname in rows[0]["argnames"]:
+
+        #Find the argnames to print in the table header.
+        #Note:
+        # - We print argnames only up to the length of args. There may be more argnames,
+        #   but if an arg value wasn't passed to the argname it must be a default setting
+        #   and thus unimportant to print.
+        # - This strategy for printing the header relies on the fact that we are
+        #   only running a single function with a fixed # of args.
+        print(rows[0]["args"].split(','))
+        print(rows[0]["argnames"])
+        num_args = len(rows[0]["args"].split(','))
+        for i in range(num_args):
+            argname = rows[0]["argnames"][i]
             if self._printable_argname(argname):
                 headers.append(argname)
         #headers.append("Arguments")
@@ -636,21 +676,18 @@ class Campaign:
                 corner_str = self._format_args(r.args,r.kwargs)
                 spec_applies_this_corner = True
 
-                # 1) Check to make sure that all keywords in spec.corners are actually
-                #    found within the string repr of this corner, otw the spec doesn't
-                #    apply to this corner and we can move on.
-                for keyword in spec.corners:
-                    if keyword not in corner_str:
-                        spec_applies_this_corner = False
-
-                if not spec_applies_this_corner:
-                    corner_info["result"] = "N/A"
+                # 1) Check to make sure that this spec applies to this corner.
+                if not spec.match_corner(corner_str):
+                    spec_applies_this_corner = False
 
                 corner_info = {"corner_name": corner_str,
                                "result"     : None,
                                "value"      : None,
                                "min_margin" : None,
                                "max_margin" : None}
+                        
+                if not spec_applies_this_corner:
+                    corner_info["result"] = "N/A"
 
                 return_dict = r.return_value
 
@@ -703,7 +740,12 @@ class Campaign:
            corner_reports = info on whether each corner was passed, generated by self.check_specs()
         """
         
-        summary = "Specification: " + spec.short_str() + "\n"
+        summary = "\nSpecification: " + spec.short_str()
+
+        if spec.corners is not None:
+            summary += f" for corners matching {spec.corners}\n"
+        else:
+            summary += "\n"
 
         # count frequencies of each result.
         counts = Counter(d["result"] for d in corner_reports)
@@ -711,13 +753,17 @@ class Campaign:
         # build summary string
         summary += "Results: " + " ".join(f"{v}x {k}" for k, v in counts.items()) +"\n"
 
-        if all(d["result"] == "PASS" for d in corner_reports):
+        if all((d["result"] == "PASS" or d["result"] == "N/A") for d in corner_reports):
             summary += "Overall Result: PASS\n"
         else:
             summary += "Overall Result: FAIL\n"
 
         # After evaluating all the results, we go back through corner_reports to find the corner
         # with the worst margin.
+        # (Obviously if all results are none, it's impossible to generate a worst corner)
+        if not any([c["value"] is not None for c in corner_reports]):
+            return summary
+        
         worst_margin = None
         worst_corner_idx = None
         for i in range(len(corner_reports)):
