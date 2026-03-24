@@ -1,0 +1,2 @@
+
+GLOBAL_SKIP_SIMULATION = False

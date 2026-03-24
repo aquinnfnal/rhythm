@@ -132,8 +132,11 @@ class Recipe():
         #Set up the command to include the stimulus file.
         rhythm_stimulus_script = f"\nstimulusFile( \"{stimulus_file_name}\" )\n"
 
-        #Copy stimulus file into the results directory. 
-        shutil.copyfile(stimulus_file, os.path.join(self.full_rundir,stimulus_file_name))
+        #Copy stimulus file into the results directory (if it's not already there).
+        try:
+            shutil.copyfile(stimulus_file, os.path.join(self.full_rundir,stimulus_file_name))
+        except shutil.SameFileError:
+            pass
 
         self.ocn_script += rhythm_stimulus_script
 
