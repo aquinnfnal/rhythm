@@ -37,6 +37,16 @@ def parse_time_string(s: str) -> int:
     return hours * 3600 + minutes * 60 + seconds
 
 
+def interpret_str(s):
+    """Parse a string into an int if possible, otw a float, otw a string"""
+    try:
+        return int(s)
+    except ValueError:
+        try:
+            return float(s)
+        except ValueError:
+            return s  # Not a number
+
 def sleep_with_status(seconds: float, update_interval: float = 5, status_text=None):
     """
     Sleep for `seconds`, printing status messages showing:
@@ -181,7 +191,7 @@ def main():
         else:
             #The alias chain is the first arg that doesn't start with a dash.
             alias_chain_txt = sys.argv[i]
-            extra_args = sys.argv[(i+1):]
+            extra_args = [ interpret_str(x) for x in sys.argv[(i+1):] ]
             break
     
     for rarg in rhythm_args:
@@ -220,8 +230,9 @@ def main():
 
         # Combine alias args + CLI args
         final_args = base_args + extra_args
+        final_args_str = [str(x) for x in final_args]
 
-        print(f"[rhythm] Running {func_name}({', '.join(final_args)})")
+        print(f"[rhythm] Running {func_name}({', '.join(final_args_str)})")
         try:
             func(*final_args)
         except Exception:

@@ -4,15 +4,18 @@ import numpy as np
 from rhythm_logger import RhythmLogger
 
 
-def custom_interp(x_val, x, y):
+def custom_interp(x_val, x, y, n=1):
     """np.interp() can only handle x-values that monotonically increase. That's fine
        for interpolating to get a y-value, but for  x_when_y_at, we need to be able
        to handle arbitrary y data.
-       This function finds the first interval [x0,x1] that encompasses the desired x 
+       This function finds the nth interval [x0,x1] that encompasses the desired x 
        value and does 2-pt linear interpolation on that interval."""
     for i in range(len(x)-1):
         if x[i] < x_val and x[i+1] >= x_val or x[i] > x_val and x[i+1] <= x_val:
-            return y[i] + (y[i+1]-y[i]) * (x_val - x[i]) / (x[i+1] - x[i])
+            if n > 1:
+                n = n - 1
+            elif n <= 1:
+                return y[i] + (y[i+1]-y[i]) * (x_val - x[i]) / (x[i+1] - x[i])
         
     return None
             
@@ -48,7 +51,8 @@ class Waveform:
 
         return np.interp(x_value, self.x, self.y)
     
-    def x_when_y_at(self, y_value):
+    def x_when_y_at(self, y_value, n=1):
+        """Find the value of x when y is equal to y_value for the nth time (default 1st)."""
         if y_value < self.y.min() or y_value > self.y.max():
             self.log.warning(
                 f"{self.name}: interpolation point {y_value} is outside data range"
@@ -58,7 +62,7 @@ class Waveform:
         #print(y_value)
         #print(self.y)
         #print(self.x)
-        result =  custom_interp(y_value, self.y, self.x)
+        result =  custom_interp(y_value, self.y, self.x, n)
         #print(result)
         if result is None:
             self.log.error(f"Failed to interpolate {self.name}.x_when_y_at({y_value})")

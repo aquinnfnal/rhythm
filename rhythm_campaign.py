@@ -95,6 +95,15 @@ class Specification:
         else:
             return f"{si_fmt(self.spec_min)} < {self.name} < {si_fmt(self.spec_max)}"
 
+
+    def check_spec(self, value):
+        isPass = True
+        if self.spec_min is not None and value < self.spec_min:
+            isPass = False
+        if self.spec_max is not None and value > self.spec_max:
+            isPass = False
+        return isPass
+        
     def match_corner(self, corner_str):
         """Returns True if this spec applies to a corner with the given corner_str. 
            We expect that corners is a string containing a set of tokens joined by AND, OR, NOT, and parentheses"""
@@ -150,6 +159,8 @@ class Campaign:
         self.total_jobs = len(jobs)
         self.completed_jobs = 0
         self.stop_dashboard = threading.Event()
+
+        self.key_args = None #List of indices of args that are important to list in the table.
 
         for i, (func, args, kwargs) in enumerate(jobs):
             job_id = i
@@ -245,7 +256,7 @@ class Campaign:
 
                 lines.append(
                     f"{color}[{job_id:03d}] {status:<10} "
-                    f"{func.__name__}{args}{RESET}"
+                    f"{func.__name__}({self.key_args_str(args)}){RESET}"
                 )
             else:
                 if status == "QUEUED":
@@ -308,8 +319,12 @@ class Campaign:
         }
 
         out_path = os.path.join(self.run_dir, "results.json")
-        with open(out_path, "w") as f:
-            json.dump(serializable, f, indent=2)
+        try:
+            with open(out_path, "w") as f:
+                json.dump(serializable, f, indent=2, default = lambda o: o.__dict__)
+        except TypeError as e:
+            print("ERROR: Rhythm could not save results in JSON format, likely because one of the arguments or return values of your function is not JSON serializable.")
+            print(e)
 
 
     def _load_results(self, filename: str = "results.json") -> None:
@@ -386,8 +401,8 @@ class Campaign:
 
                 rows.append({
                     "function": func_name,
-                    "argnames": r.argnames,
-                    "args": self._format_args(r.args, {}), #Don't print kwargs in this table.
+                    "argnames": self.key_args_str(r.argnames),
+                    "args": self.key_args_str(r.args), #Don't print kwargs in this table.
                     "results": result_dict,
                 })
 
@@ -421,10 +436,10 @@ class Campaign:
         # - This strategy for printing the header relies on the fact that we are
         #   only running a single function with a fixed # of args.
         print(rows[0]["args"].split(','))
-        print(rows[0]["argnames"])
+        print(rows[0]["argnames"].split(','))
         num_args = len(rows[0]["args"].split(','))
         for i in range(num_args):
-            argname = rows[0]["argnames"][i]
+            argname = rows[0]["argnames"].split(',')[i]
             if self._printable_argname(argname):
                 headers.append(argname)
         #headers.append("Arguments")
@@ -444,7 +459,7 @@ class Campaign:
 
             for key in result_keys:
                 val = row["results"].get(key, "")
-                if isinstance(val, float):
+                if isinstance(val, float) and (fmt == "ascii" or fmt == "markdown"):
                     line.append(si_fmt(val))
                 else:
                     line.append(str(val))
@@ -753,6 +768,10 @@ class Campaign:
         # build summary string
         summary += "Results: " + " ".join(f"{v}x {k}" for k, v in counts.items()) +"\n"
 
+        if all((d["result"] == "N/A") for d in corner_reports):
+            summary += "Overall Result: N/A\n"
+            #Nothing else to compute
+            return summary
         if all((d["result"] == "PASS" or d["result"] == "N/A") for d in corner_reports):
             summary += "Overall Result: PASS\n"
         else:
@@ -766,6 +785,9 @@ class Campaign:
         
         worst_margin = None
         worst_corner_idx = None
+
+        print(corner_reports)
+        
         for i in range(len(corner_reports)):
             min_margin = corner_reports[i]["min_margin"]
             max_margin = corner_reports[i]["max_margin"]
@@ -775,7 +797,6 @@ class Campaign:
             if max_margin is not None and (worst_margin is None or max_margin < worst_margin):
                 worst_margin = max_margin
                 worst_corner_idx = i
-
         worst_corner_val = corner_reports[worst_corner_idx]["value"]
         worst_corner_name = corner_reports[worst_corner_idx]["corner_name"]
 
@@ -784,7 +805,12 @@ class Campaign:
         return summary
 
 
-    
+    def key_args_str(self,args):
+        if self.key_args is None:
+            return self._format_args(args,{})
+        else:
+            key_args_list = [str(args[i]) for i in self.key_args]
+            return ", ".join(key_args_list)
 
 
     def _format_args(self, args, kwargs) -> str:
