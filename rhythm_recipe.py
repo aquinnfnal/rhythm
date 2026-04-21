@@ -300,7 +300,7 @@ class Recipe():
             return
         
 
-        OCEAN_COMMAND = ["ocean","-restore","compiled_recipe.ocn","-cdslib",self.cdslib]
+        
 
 
         ## 2) Final compilation of recipe. ##
@@ -310,6 +310,9 @@ class Recipe():
         ## 3) Run! ##
         sim_log = os.path.join(self.full_rundir, "simulation.log")
         sim_log_short = os.path.join(self.rundir,"simulation.log")
+        cds_log = "cds.log" #Rundir is already included by -log flag.
+
+        OCEAN_COMMAND = ["ocean","-restore","compiled_recipe.ocn","-cdslib",self.cdslib, "-log", cds_log]
         
         if interactive:
             subprocess.run(OCEAN_COMMAND, 
@@ -330,7 +333,7 @@ class Recipe():
         with open(sim_log,"r") as read_file:
             sim_log_txt = read_file.read()
         
-        if not self.find_log_errors(sim_log_txt):
+        if (not rg.CHECK_SIM_ERRORS) or (not self.find_log_errors(sim_log_txt)):
             self.log.info("Simulation complete!")
             if not interactive and not quiet:
                 tail_proc.terminate()
@@ -339,6 +342,10 @@ class Recipe():
     def find_log_errors(self, sim_log_txt):
         if "ERROR (SPECTRE-16080)" in sim_log_txt:
             self.log.error("DC Convergence Failure!")
+            return True
+
+        if "Simulation completed successfully." not in sim_log_txt:
+            self.log.error("Simulation did NOT complete successfully! Check simulation.log for details.")
             return True
         
         return False

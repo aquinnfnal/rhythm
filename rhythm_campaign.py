@@ -786,7 +786,7 @@ class Campaign:
         worst_margin = None
         worst_corner_idx = None
 
-        print(corner_reports)
+        #print(corner_reports)
         
         for i in range(len(corner_reports)):
             min_margin = corner_reports[i]["min_margin"]
