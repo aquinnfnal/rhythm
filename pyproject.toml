@@ -1,0 +1,8 @@
+
+[project]
+name = "rhythm"
+version = "0.1.0"
+
+
+[project.scripts]
+rrun = "rhythm.rhythm_run:main"

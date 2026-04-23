@@ -92,10 +92,11 @@ def sleep_with_status(seconds: float, update_interval: float = 5, status_text=No
 
 
 
-def load_functions_from_sources(source_files: List[Path]) -> Dict[str, Callable]:
+def load_functions_from_source_files(source_files: List[Path]) -> Dict[str, Callable]:
     """
-    Dynamically import each source file and collect all callable
-    objects defined at module scope.
+    Given a list of paths to individual Python files, import all functions from within those files.
+    NOTE: This does not allow much flexibility in inter-module imports. Should really
+    only be used for isolated functions.
     """
     functions = {}
 
@@ -115,18 +116,48 @@ def load_functions_from_sources(source_files: List[Path]) -> Dict[str, Callable]
     return functions
 
 
+def load_functions_from_source_modules(source_modules: List[str]) -> Dict[str, Callable]:
+    """
+    Given a list of qualified source module paths, import all functions from within those files.
+    NOTE: Needs to be in some kind of well-defined module for this to work. 
+    """
+    functions = {}
+
+    # 1) Ensure cwd (project root) is on sys.path
+    cwd = Path.cwd()
+    if str(cwd) not in sys.path:
+        sys.path.insert(0, str(cwd))
+
+    # 2) Import modules properly
+    for modname in source_modules:
+        module = importlib.import_module(modname)
+
+        # 3) Collect functions defined in THIS module only
+        for name, obj in vars(module).items():
+            if callable(obj) and getattr(obj, "__module__", None) == module.__name__:
+                functions[name] = obj
+
+    return functions
+
+
 def parse_sources_file(path: Path) -> List[Path]:
     """
     Each line is a relative path to a Python file.
     """
-    sources = []
+    source_files = []
+    source_modules = []
+    
     with path.open() as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            sources.append(path.parent / line)
-    return sources
+
+            if line.endswith(".py"):
+                source_files.append(path.parent / line)
+            else:
+                source_modules.append(line)
+    return (source_modules, source_files)
 
 
 def parse_aliases_file(path: Path) -> Dict[str, Dict]:
@@ -177,11 +208,12 @@ def main():
         raise FileNotFoundError("rhythm_aliases.txt not found")
 
     # Parse config files
-    source_paths = parse_sources_file(sources_file)
+    source_modules, source_files = parse_sources_file(sources_file)
     alias_map = parse_aliases_file(aliases_file)
 
     # Load all functions
-    functions = load_functions_from_sources(source_paths)
+    functions = load_functions_from_source_files(source_files)
+    functions.update(load_functions_from_source_modules(source_modules))
 
     # Parse command line
     rhythm_args = []
