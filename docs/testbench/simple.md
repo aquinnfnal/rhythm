@@ -2,18 +2,16 @@
 
 [(Click to return to Rhythm Docs Overview)](</docs/README.md>)
 
-Some quick examples to get you started running Rhythm recipes.
+The simplest way to run a rhythm test is to just make a Python file that defines a recipe and/or campaign. 
 
-## Prerequisites
+Some quick examples are given below. Return to the [docs overview](</docs/README.md>) for details on how to write Recipes and Campaigns.
 
-- **Cadence OCEAN** must be installed and on `PATH`. Rhythm checks for `ocean` before running. 
-- A valid **`cds.lib`** for your project. Pass it to `Recipe.set_cdslib(...)`.
-- Make sure you have Python 3 and the Rhythm modules available on your path. 
+To run your testbench, just do ```python3 my_testbench.py```. Couldn't be simpler!
 
 ## Simple Example Recipe
 
 ```python
-from rhythm_recipe import Recipe
+from rhythm.rhythm_recipe import Recipe
 
 tb = Recipe()
 tb.set_rundir("demo_run")                    # creates ./demo_run
@@ -59,7 +57,7 @@ tb.launch_viva()
 ## Simple Example Campaign`
 
 ```python
-from rhythm_campaign import Campaign
+from rhythm.rhythm_campaign import Campaign
 
 def run_one_corner(vdd, temp, quiet=True):
     tb = Recipe()
