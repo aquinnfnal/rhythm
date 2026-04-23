@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Callable
 import traceback
 
-import rhythm_globals as rg
+import rhythm.rhythm_globals as rg
 
 # ANSI helpers
 CLEAR = "\033[2J\033[H"
@@ -124,9 +124,10 @@ def load_functions_from_source_modules(source_modules: List[str]) -> Dict[str, C
     functions = {}
 
     # 1) Ensure cwd (project root) is on sys.path
-    cwd = Path.cwd()
-    if str(cwd) not in sys.path:
-        sys.path.insert(0, str(cwd))
+    parent_dir = Path.cwd().parents[0]
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
+
 
     # 2) Import modules properly
     for modname in source_modules:

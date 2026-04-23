@@ -2,7 +2,7 @@ import datetime
 import shutil
 import os
 
-from rhythm_logger import RhythmLogger
+from rhythm.rhythm_logger import RhythmLogger
 
 
 

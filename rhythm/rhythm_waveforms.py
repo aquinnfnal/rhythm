@@ -1,7 +1,7 @@
 
 import re
 import numpy as np
-from rhythm_logger import RhythmLogger
+from rhythm.rhythm_logger import RhythmLogger
 
 
 def custom_interp(x_val, x, y, n=1):

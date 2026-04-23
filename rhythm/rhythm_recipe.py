@@ -13,10 +13,10 @@ import subprocess
 import datetime
 import shutil
 from types import SimpleNamespace
-from rhythm_logger import RhythmLogger
-from rhythm_utils import *
-from rhythm_waveforms import Waveform, WaveformSet
-import rhythm_globals as rg
+from rhythm.rhythm_logger import RhythmLogger
+from rhythm.rhythm_utils import *
+from rhythm.rhythm_waveforms import Waveform, WaveformSet
+import rhythm.rhythm_globals as rg
 
 # Define hooks
 #RHYTHM_VARIABLES_HOOK = "$RHYTHM_VARIABLES"

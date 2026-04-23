@@ -8,7 +8,7 @@ import sys
 from typing import Any, Callable, Dict, List, Tuple, Optional
 import math
 from collections import defaultdict, Counter
-from rhythm_utils import *
+from rhythm.rhythm_utils import *
 import inspect
 
 # ---------- Result object ----------
