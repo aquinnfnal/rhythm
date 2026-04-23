@@ -24,7 +24,7 @@ Instead of creating an ADE testbench, you'll write a **Rhythm Recipe**, a short,
 **Normal Users:**
 
 ```
-pip install git+https://github.com/SpacelyProject/py-libs-common
+pip install git+https://github.com/Fermilab-Microelectronics/rhythm.git
 ```
 
 **Developers:**
