@@ -1,6 +1,6 @@
-
 import re
 import numpy as np
+import matplotlib.pyplot as plt
 from rhythm.rhythm_logger import RhythmLogger
 
 
@@ -87,6 +87,30 @@ class Waveform:
         if isinstance(other, (int, float)):
             return Waveform(self.x, self.y / other, name=f"({self.name}/{other})")
 
+    def slice(self, x1, x2, slice_name=None):
+        """
+        Return a new Waveform containing all points with:
+            x1 <= x <= x2
+
+        Works even if x1 and/or x2 are not exact x-values.
+        """
+
+        # Ensure correct ordering
+        xmin = min(x1, x2)
+        xmax = max(x1, x2)
+
+        mask = (self.x >= xmin) & (self.x <= xmax)
+
+        if slice_name is None:
+            slice_name = self.name
+
+        return Waveform(
+            self.x[mask],
+            self.y[mask],
+            name=slice_name
+        )
+
+
     def _check_compatibility(self, other):
         if not np.array_equal(self.x, other.x):
             raise ValueError("Independent variables do not match")
@@ -127,6 +151,13 @@ class WaveformSet:
         x = data[:, 0]
         waveforms = {}
 
+        #First column of data is the x-value, so data.shape[1]-1 should match the number of
+        #waveforms we are expecting to retrieve from this file.
+        if (data.shape[1]-1) != len(self.y_names):
+            print(f"[ERROR] WaveformSet: File {self.filename} contains {data.shape[1]-1} waves, but was expecting {len(self.y_names)} waves:")
+            print(f"{self.y_names}")
+            print("Perhaps some of these waveforms were not properly captured by simulation!")
+
         #For columsns 1 to N...
         for i in range(1, data.shape[1]):
             waveforms[self.y_names[i-1]] = Waveform(x, data[:, i], name=self.y_names[i-1])
@@ -146,3 +177,35 @@ class WaveformSet:
                 wf = Waveform(self.x, interpolated_y, name=f"{prefix}_{name}")
 
             self.waveforms[wf.name] = wf
+
+
+
+
+def plot_waveforms(waveforms, title=None):
+    """
+    Plot multiple Waveform objects on the same matplotlib axis.
+
+    Parameters
+    ----------
+    waveforms : list[Waveform]
+        List of Waveform objects to plot.
+
+    title : str, optional
+        Title for the graph.
+    """
+
+    fig, ax = plt.subplots()
+
+    for wf in waveforms:
+        ax.plot(wf.x, wf.y, label=wf.name)
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+
+    if title is not None:
+        ax.set_title(title)
+
+    ax.legend()
+    ax.grid(True)
+
+    plt.show()
