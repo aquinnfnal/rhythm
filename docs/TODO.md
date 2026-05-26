@@ -11,4 +11,5 @@ Documentation:
 Code:
 
 - Finish overloading all the arithmetic operators for Waveforms
-- Lint checking for improper design variables / outputs. 
+- Lint checking for improper design variables / outputs.
+- When summarizing results (particularly while using rrun -s), pull timestamps from Cadence logs so that they reflect the time when the simulation was run, not the last time that a Python analysis was performed.
